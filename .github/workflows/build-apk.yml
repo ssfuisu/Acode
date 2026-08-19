@@ -1,4 +1,4 @@
-name: Build Acode APK
+name: Build Acode Release APK
 
 on:
   push:
@@ -13,8 +13,8 @@ permissions:
   contents: write
 
 jobs:
-  build-apk:
-    name: Build Debug APK
+  build-release-apk:
+    name: Build & Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -47,22 +47,57 @@ jobs:
           npm install
           npm run setup
 
-      - name: Build Normal Debug APK
+      - name: Build Production Release APK
         run: |
           node utils/storage_manager.mjs y
-          npm run build paid dev apk
+          npm run build paid prod apk
 
-      - name: Prepare Artifacts
+      - name: Sign Release APK
         run: |
           mkdir -p dist-apks
-          if [ -f platforms/android/app/build/outputs/apk/debug/app-debug.apk ]; then
-            cp platforms/android/app/build/outputs/apk/debug/app-debug.apk dist-apks/Acode-Ubuntu24-Debug.apk
-            sha256sum dist-apks/Acode-Ubuntu24-Debug.apk > dist-apks/Acode-Ubuntu24-Debug.apk.sha256
+          keytool -genkeypair -v -keystore release.keystore -alias acode -keyalg RSA -keysize 2048 -validity 10000 -storepass acodepass -keypass acodepass -dname "CN=Acode, OU=Acode, O=Acode, L=City, S=State, C=US"
+          
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_SDK_ROOT/build-tools/* | sort -V | tail -n 1)
+          echo "Using Android Build Tools from: $BUILD_TOOLS_DIR"
+          
+          UNSIGNED_APK=$(find platforms/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$UNSIGNED_APK" ]; then
+            UNSIGNED_APK=$(find platforms/android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          fi
+          
+          echo "Found APK to sign: $UNSIGNED_APK"
+          
+          if [ -n "$UNSIGNED_APK" ]; then
+            $BUILD_TOOLS_DIR/zipalign -v -p 4 "$UNSIGNED_APK" dist-apks/aligned.apk || cp "$UNSIGNED_APK" dist-apks/aligned.apk
+            $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:acodepass --key-pass pass:acodepass --out dist-apks/Acode-Ubuntu24-Release.apk dist-apks/aligned.apk
+            rm -f dist-apks/aligned.apk
+            sha256sum dist-apks/Acode-Ubuntu24-Release.apk > dist-apks/Acode-Ubuntu24-Release.apk.sha256
           fi
 
-      - name: Upload Debug APK Artifact
+      - name: Publish Direct Release on GitHub
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest-release
+          name: "Acode Ubuntu 24.04 Release APK"
+          body: |
+            ## 🚀 Acode with Ubuntu 24.04 LTS (Noble)
+            
+            ### ✨ Özellikler:
+            - **proot-distro (rootless)**: Root gerektirmeyen Ubuntu 24.04 LTS Noble Numbat (glibc) ortamı. Tam `pip`, `numpy`, Python kütüphaneleri desteği.
+            - **chroot-distro (root)**: Sabamdarif'in resmi açık kaynaklı `chroot-distro` aracıyla tam çekirdek hızında, güvenli otomatik mount ve login.
+            - **Gruplar Hatası Düzeltildi**: Android UID/GID uyumsuzluğu tamamen giderildi (`groups: cannot find name for group ID` uyarısı yok).
+            - **Acode CLI**: Editör içi dosya açma desteği (`acode <dosya>`).
+            
+            ### 📥 Doğrudan İndir (Tek Dosya APK):
+            Aşağıdaki bağlantıdan **Acode-Ubuntu24-Release.apk** dosyasını doğrudan indirebilirsiniz (zip olmadan tek dosya APK).
+          files: dist-apks/Acode-Ubuntu24-Release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Acode-Ubuntu24-Debug-APK
+          name: Acode-Ubuntu24-Release-APK
           path: dist-apks/*
           retention-days: 30

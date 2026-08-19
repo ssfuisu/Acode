@@ -73,6 +73,28 @@ if [ ! -f /linkerconfig/ld.config.txt ]; then
     touch /linkerconfig/ld.config.txt
 fi
 
+# Ensure Android GIDs and UID exist in /etc/group and /etc/passwd
+if [ -w /etc/group ]; then
+    for gid in $(id -G 2>/dev/null) 3003 9997 20442 50442 1015 1023 1028; do
+        if ! grep -q ":$gid:" /etc/group 2>/dev/null; then
+            case "$gid" in
+                3003) gname="aid_inet" ;;
+                9997) gname="aid_everybody" ;;
+                1015) gname="aid_sdcard_rw" ;;
+                1023) gname="aid_media_rw" ;;
+                *) gname="aid_$gid" ;;
+            esac
+            echo "$gname:x:$gid:root" >> /etc/group 2>/dev/null
+        fi
+    done
+fi
+
+if [ -w /etc/passwd ]; then
+    uid=$(id -u 2>/dev/null || echo 0)
+    if [ "$uid" != "0" ] && ! grep -q ":$uid:" /etc/passwd 2>/dev/null; then
+        echo "aid_$uid:x:$uid:$uid:Android User:/public:/bin/bash" >> /etc/passwd 2>/dev/null
+    fi
+fi
 
 if [ "$INSTALLING" = true ]; then
     echo "Configuring timezone..."
@@ -94,8 +116,6 @@ if [ "$INSTALLING" = true ]; then
     echo "Installation completed."
     exit 0
 fi
-
-
 
     echo "$$" > "$PREFIX/pid"
     chmod +x "$PREFIX/axs" 2>/dev/null || :
@@ -215,14 +235,28 @@ ACODE_CLI
         chmod +x "$ROOTFS_DIR/usr/local/bin/acode"
     fi
 
-    # Create initrc if it doesn't exist
+    # Create initrc
     # initrc runs in bash so we can use bash features
-if [ ! -e "$ROOTFS_DIR/initrc" ]; then
     cat <<'EOF' > "$ROOTFS_DIR/initrc"
-# Source rc files if they exist
+# Ensure Android GIDs exist in /etc/group
+if [ -w /etc/group ]; then
+    for gid in $(id -G 2>/dev/null) 3003 9997 20442 50442 1015 1023 1028; do
+        if ! grep -q ":$gid:" /etc/group 2>/dev/null; then
+            case "$gid" in
+                3003) gname="aid_inet" ;;
+                9997) gname="aid_everybody" ;;
+                1015) gname="aid_sdcard_rw" ;;
+                1023) gname="aid_media_rw" ;;
+                *) gname="aid_$gid" ;;
+            esac
+            echo "$gname:x:$gid:root" >> /etc/group 2>/dev/null
+        fi
+    done
+fi
 
+# Source rc files if they exist
 if [ -f "/etc/profile" ]; then
-    source "/etc/profile"
+    source "/etc/profile" 2>/dev/null || :
 fi
 
 # Environment setup
@@ -367,17 +401,16 @@ alias clear='reset'
 
 # Source user configs AFTER defaults (so user can override everything)
 if [ -f /etc/bash.bashrc ]; then
-    source /etc/bash.bashrc
+    source /etc/bash.bashrc 2>/dev/null || :
 elif [ -f /etc/bash/bashrc ]; then
-    source /etc/bash/bashrc
+    source /etc/bash/bashrc 2>/dev/null || :
 fi
 
 if [ -f "$HOME/.bashrc" ]; then
-    source "$HOME/.bashrc"
+    source "$HOME/.bashrc" 2>/dev/null || :
 fi
 
 EOF
-fi
 
 # Add PS1 only if not already present
 if ! grep -q 'PS1=' "$ROOTFS_DIR/initrc"; then

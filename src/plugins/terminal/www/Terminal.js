@@ -372,6 +372,22 @@ const Terminal = {
             await writeText(`${distroDir}/etc/resolv.conf`, "nameserver 8.8.8.8\nnameserver 8.8.4.4\n");
             await writeText(`${distroDir}/etc/hosts`, "127.0.0.1 localhost\n::1 localhost\n");
 
+            // Ensure Android supplementary GIDs exist in /etc/group
+            await Executor.execute(`sh -c '
+                for gid in $(id -G 2>/dev/null) 3003 9997 20442 50442 1015 1023 1028; do
+                    if ! grep -q ":$gid:" "${distroDir}/etc/group" 2>/dev/null; then
+                        case "$gid" in
+                            3003) gname="aid_inet" ;;
+                            9997) gname="aid_everybody" ;;
+                            1015) gname="aid_sdcard_rw" ;;
+                            1023) gname="aid_media_rw" ;;
+                            *) gname="aid_$gid" ;;
+                        esac
+                        echo "$gname:x:$gid:root" >> "${distroDir}/etc/group" 2>/dev/null
+                    fi
+                done
+            '`);
+
             const rmWrapper = await readAsset("rm-wrapper.sh");
             await ensureDir(`${distroDir}/bin`);
             await deleteFile(`${distroDir}/bin/rm`).catch(() => {});

@@ -128,6 +128,21 @@ for arg in "$@"; do
     esac
 done
 
+if [ -f "$ROOTFS_DIR/etc/group" ]; then
+    for gid in $(id -G 2>/dev/null) 3003 9997 20442 50442 1015 1023 1028; do
+        if ! grep -q ":$gid:" "$ROOTFS_DIR/etc/group" 2>/dev/null; then
+            case "$gid" in
+                3003) gname="aid_inet" ;;
+                9997) gname="aid_everybody" ;;
+                1015) gname="aid_sdcard_rw" ;;
+                1023) gname="aid_media_rw" ;;
+                *) gname="aid_$gid" ;;
+            esac
+            echo "$gname:x:$gid:root" >> "$ROOTFS_DIR/etc/group" 2>/dev/null
+        fi
+    done
+fi
+
 if [ "$FAILSAFE" = true ] && [ "$INSTALLING" != true ]; then
     echo "$$" > "$PREFIX/pid"
 

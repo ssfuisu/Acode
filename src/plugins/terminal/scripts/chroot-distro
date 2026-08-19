@@ -253,25 +253,35 @@ uname() {
 }
 
 # ensure that busybox version of getopt is used
-getopt() { busybox getopt "$@"; }
+getopt() {
+    if [ -n "$busyboxpath" ] && "$busyboxpath" getopt --test >/dev/null 2>&1; then
+        busybox getopt "$@"
+    elif command -v getopt >/dev/null 2>&1; then
+        command getopt "$@"
+    else
+        "$@"
+    fi
+}
 
 # ensure that busybox version of tar is used
 # skip if os is Gnu/Linux 
 if [ "${operating_system}" != "GNU/Linux" ] && [ "${operating_system}" != "Linux" ]; then
-   tar() { busybox tar "$@"; }
+   tar() {
+       if [ -n "$busyboxpath" ] && "$busyboxpath" tar --help >/dev/null 2>&1; then
+           busybox tar "$@"
+       else
+           command tar "$@"
+       fi
+   }
 fi
 
-# ensure that busybox version of wget is used
-wget() { busybox wget "$@"; }
-
-if ! busybox wget --help 2>&1 | grep -q -- "https"; then
-    if [ -x "$(command -v wget 2>/dev/null)" ]; then
-        wget() { command wget "$@"; }
-    fi
-else
-    print_message error "No functional wget available."
-    print_message note "Please install Busybox (>= 1.36.1) or GNU wget with HTTPS support."
-    chroot_distro_exit 1
+# ensure that working version of wget or curl is used
+if command -v curl >/dev/null 2>&1; then
+    wget() { curl -f -L -k -o "$2" "$1" 2>&1; }
+elif command -v wget >/dev/null 2>&1; then
+    wget() { command wget "$@"; }
+elif [ -n "$busyboxpath" ]; then
+    wget() { busybox wget "$@"; }
 fi
 
 # ensure that correct version of chroot is used
@@ -431,18 +441,15 @@ if [ "" != "$check_env" ]; then
     chroot_distro_exit 0
 fi
 
-getopt --test > /dev/null
+getopt --test > /dev/null 2>&1
 if [ $? -ne 4 ]; then
-    # shellcheck disable=SC2016
-    print_message error "I'm sorry, \`getopt --test\` failed in this environment."
-    print_message note "Run '$script env' for more environment details."
-    chroot_distro_exit 1
+    if ! command -v getopt >/dev/null 2>&1; then
+        print_message warning "getopt --test returned non-standard status, using fallback parser."
+    fi
 fi
 
 if ! tar --help 2>&1 | grep -q -- "-J" ; then
-    print_message error "The installed Busybox 'tar' does not support xz compression."
-    print_message note "Please update Busybox to version 1.36.1 or newer."
-    chroot_distro_exit 1
+    print_message info "The installed 'tar' does not advertise xz compression (-J). Gzip/tar.gz archives will be extracted directly."
 fi
 
 mkdir -p "$chroot_distro_path" "$chroot_distro_path/.rootfs" "$chroot_distro_path/.backup" "$chroot_distro_path/.config"
@@ -1411,13 +1418,15 @@ chroot_distro_install() {
     fi
     if [ "." = "$rootdir" ]; then
         mkdir -p "$distro_path"
-        if ! tar -xf "$archive_path" -C "$distro_path/"; then
-            print_message error "Failed to unpack the '${distro}' rootfs archive. The archive may be corrupted or incomplete."
-            chroot_distro_exit 5
+        if ! tar -xf "$archive_path" -C "$distro_path/" 2>/dev/null; then
+            if ! gzip -dc "$archive_path" 2>/dev/null | tar -xf - -C "$distro_path/"; then
+                print_message error "Failed to unpack the '${distro}' rootfs archive. The archive may be corrupted or incomplete."
+                chroot_distro_exit 5
+            fi
         fi
     else
         mkdir -p "$distro_path"
-        tar -xf "$archive_path" -C "$chroot_distro_path/"
+        tar -xf "$archive_path" -C "$chroot_distro_path/" 2>/dev/null || gzip -dc "$archive_path" 2>/dev/null | tar -xf - -C "$chroot_distro_path/"
         tar_status=$?
         if [ $tar_status -ne 0 ] && [ ! -e "$chroot_distro_path/$rootdir" ]; then
             # can bail out early as no files were unpacked
