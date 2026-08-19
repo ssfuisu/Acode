@@ -1048,9 +1048,11 @@ chroot_distro_download() {
     fi
     
     if [ -f "$chroot_distro_path/.rootfs/$distro.tar.xz" ]; then
-        print_message error "The rootfs for '${distro}' is already downloaded."
-        print_message note "Use '${script} install ${distro}' to proceed with installation or '${script} delete ${distro}' to remove the existing file."
-        chroot_distro_exit 89
+        if [ -z "$2" ]; then
+            print_message info "The rootfs for '${distro}' is already downloaded."
+            return 0
+        fi
+        rm -f "$chroot_distro_path/.rootfs/$distro.tar.xz"
     fi
     
     if ! wget -O "$chroot_distro_path/.rootfs/$distro.tar.xz" "$download_url"; then
@@ -2067,10 +2069,13 @@ elif [ "$command" = "install" ]; then
     done
     if [ $# -eq 0 ]; then
         chroot_distro_missing_distro
-    elif [ $# -ne 1 ]; then
+    elif [ $# -gt 2 ]; then
         chroot_distro_user_check_parameters
     fi
     chroot_distro_warn_if_unsupported_busybox
+    if [ -n "$2" ] || [ ! -f "$chroot_distro_path/.rootfs/$1.tar.xz" ]; then
+        chroot_distro_download "$1" "$2"
+    fi
     chroot_distro_install "$1" 
 elif [ "$command" = "uninstall" ]; then
     PARSED=$(getopt --options=f --longoptions=force --name "$0" -- "$@") || chroot_distro_exit 2
