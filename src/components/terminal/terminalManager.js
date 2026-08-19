@@ -8,6 +8,7 @@ import quickTools from "components/quickTools";
 import toast from "components/toast";
 import alert from "dialogs/alert";
 import confirm from "dialogs/confirm";
+import select from "dialogs/select";
 import EditorFile from "lib/editorFile";
 import openFile from "lib/openFile";
 import openFolder from "lib/openFolder";
@@ -444,11 +445,40 @@ class TerminalManager {
 				};
 			}
 
+			// Prompt user to select terminal environment (proot-distro vs chroot-distro)
+			const distroChoice = await select(
+				strings["choose terminal environment"] || "Choose Terminal Environment",
+				[
+					{
+						value: "proot",
+						text: "proot-distro (rootless)",
+						subText:
+							"Ubuntu 24.04 (Noble) via PRoot. No root required. Full Python & wheel support.",
+						icon: "icon-folder",
+					},
+					{
+						value: "chroot",
+						text: "chroot-distro (root)",
+						subText:
+							"Ubuntu 24.04 via sabamdarif chroot-distro. Requires Root (SU). Native kernel speed.",
+						icon: "icon-flash_on",
+					},
+				],
+			);
+
+			if (!distroChoice) {
+				return {
+					success: false,
+					error: "Installation cancelled by user",
+				};
+			}
+
 			// Create installation progress terminal
 			const installTerminal = await this.createInstallationTerminal();
 
 			// Install terminal with progress logging
 			const installResult = await Terminal.install(
+				distroChoice,
 				(message) => {
 					// Remove stdout/stderr prefix for
 					const cleanMessage = this.formatInstallLog(message);

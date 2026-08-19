@@ -34,9 +34,18 @@ const Terminal = {
         await writeText(`${filesDir}/init-alpine.sh`, initAlpine);
         await writeText(`${filesDir}/init-sandbox.sh`, initSandbox);
 
-        await deleteFile(`${filesDir}/alpine/bin/rm`).catch(() => {});
-        await writeText(`${filesDir}/alpine/bin/rm`, rmWrapper);
-        await setExec(`${filesDir}/alpine/bin/rm`, true);
+        const activeDistroDir = (await fileExists(`${filesDir}/distro`))
+            ? `${filesDir}/distro`
+            : (await fileExists(`${filesDir}/ubuntu`))
+            ? `${filesDir}/ubuntu`
+            : `${filesDir}/alpine`;
+
+        if (await fileExists(activeDistroDir)) {
+            await ensureDir(`${activeDistroDir}/bin`);
+            await deleteFile(`${activeDistroDir}/bin/rm`).catch(() => {});
+            await writeText(`${activeDistroDir}/bin/rm`, rmWrapper);
+            await setExec(`${activeDistroDir}/bin/rm`, true);
+        }
 
         if (installing) {
             return new Promise((resolve, reject) => {
@@ -114,13 +123,19 @@ const Terminal = {
     },
 
     /**
-     * Installs Alpine by downloading binaries and extracting the root filesystem.
-     * Also sets up additional dependencies for F-Droid variant.
+     * Installs Linux distribution (Ubuntu 24.04 LTS Noble) via PRoot (rootless) or Chroot (root).
+     * @param {string|Function} [distroType="proot"] - "proot" or "chroot".
      * @param {Function} [logger=console.log] - Function to log standard output.
      * @param {Function} [err_logger=console.error] - Function to log errors.
-     * @returns {Promise<boolean>} - Returns true if installation completes with exit code 0
+     * @returns {Promise<boolean>} - Returns true if installation completes successfully.
      */
-    async install(logger = console.log, err_logger = console.error) {
+    async install(distroType = "proot", logger = console.log, err_logger = console.error) {
+        if (typeof distroType === "function") {
+            err_logger = logger;
+            logger = distroType;
+            distroType = "proot";
+        }
+
         if (!(await this.isSupported())) return false;
 
         const isFdroid = await Executor.execute("echo $FDROID");
@@ -128,10 +143,10 @@ const Terminal = {
         this.lastInstallError = "";
 
         try {
-            //cleanup before insatll
+            // cleanup before install
             await this.uninstall();
         } catch (e) {
-            //supress error
+            // suppress error
         }
 
         const filesDir = await new Promise((resolve, reject) => {
@@ -143,29 +158,23 @@ const Terminal = {
         });
 
         try {
-
             const architectures = {
                 "arm64-v8a": {
                     libraryDirectory: "arm64",
                     axsArchitecture: "arm64",
-                    alpineDirectory: "aarch64",
-                    alpineFilename: "alpine-minirootfs-3.21.0-aarch64.tar.gz",
+                    ubuntuArch: "arm64",
                     hasLibproot32: true
                 },
-
                 "armeabi-v7a": {
                     libraryDirectory: "arm32",
                     axsArchitecture: "armv7",
-                    alpineDirectory: "armhf",
-                    alpineFilename: "alpine-minirootfs-3.21.0-armhf.tar.gz",
+                    ubuntuArch: "armhf",
                     hasLibproot32: false
                 },
-
                 "x86_64": {
                     libraryDirectory: "x64",
                     axsArchitecture: "x86_64",
-                    alpineDirectory: "x86_64",
-                    alpineFilename: "alpine-minirootfs-3.21.0-x86_64.tar.gz",
+                    ubuntuArch: "amd64",
                     hasLibproot32: true
                 }
             };
@@ -176,139 +185,148 @@ const Terminal = {
                 throw new Error(`Unsupported architecture: ${arch}`);
             }
 
-            if(isFdroid === "true") {
+            // ==========================================
+            // CHROOT DISTRO (ROOT MODE)
+            // ==========================================
+            if (distroType === "chroot") {
+                logger("⚡ Setting up chroot-distro for root environment...");
+
+                await ensureDir(`${filesDir}/bin`);
+                await ensureDir(`${filesDir}/.downloaded`);
+
+                // Write chroot-distro script from bundled assets
+                const chrootDistroScript = await readAsset("chroot-distro");
+                await writeText(`${filesDir}/bin/chroot-distro`, chrootDistroScript);
+                await setExec(`${filesDir}/bin/chroot-distro`, true);
+
+                if (isFdroid !== "true") {
+                    await Executor.execute("rm -f $PREFIX/axs && ln -s $NATIVE_DIR/libaxs.so $PREFIX/axs");
+                }
+
+                await writeText(`${filesDir}/.distro_type`, "chroot");
+
+                logger("📦 Installing Ubuntu 24.04 LTS (Noble) via chroot-distro...");
+                logger("ℹ️ Requesting root (su) access...");
+
+                const ubuntuUrl = `https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-${architecture.ubuntuArch}.tar.gz`;
+
+                const installSuccess = await new Promise((resolve, reject) => {
+                    let lastErr = "";
+                    Executor.start("su", (type, data) => {
+                        logger(`${type === "stderr" ? "⚠️" : "▶"} ${data}`);
+                        if (type === "stderr" && data) {
+                            lastErr = lastErr ? `${lastErr}\n${data}` : data;
+                        }
+                        if (type === "exit") {
+                            const ok = data === "0";
+                            if (!ok) {
+                                this.lastInstallError = lastErr || `chroot-distro exited with code ${data}`;
+                            }
+                            resolve(ok);
+                        }
+                    }).then(async (uuid) => {
+                        await Executor.write(uuid, `sh ${filesDir}/bin/chroot-distro install ubuntu "${ubuntuUrl}"; exit $?\n`);
+                    }).catch((err) => {
+                        const msg = formatError(err);
+                        this.lastInstallError = msg;
+                        err_logger(msg);
+                        resolve(false);
+                    });
+                });
+
+                if (!installSuccess) {
+                    throw new Error(this.lastInstallError || "chroot-distro install failed. Please check SU permissions.");
+                }
+
+                await ensureDir(`${filesDir}/.extracted`);
+                await ensureDir(`${filesDir}/.configured`);
+                logger("✅ chroot-distro Ubuntu 24.04 installed successfully!");
+                return true;
+            }
+
+            // ==========================================
+            // PROOT DISTRO (ROOTLESS MODE - UBUNTU 24.04)
+            // ==========================================
+            logger("🚀 Setting up proot-distro (Ubuntu 24.04 Noble)...");
+            await writeText(`${filesDir}/.distro_type`, "proot");
+
+            const ubuntuUrl = `https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-${architecture.ubuntuArch}.tar.gz`;
+
+            if (isFdroid === "true") {
                 const buildUrl = (...parts) => parts.join("");
 
+                const strings = {
+                    protocol: ["ht", "tps", ":", "//"],
+                    rawGithubDomain: ["raw", ".", "github", "usercontent", ".", "com"],
+                    githubDomain: ["git", "hub", ".", "com"],
+                    acodeFoundation: ["Acode", "-", "Foundation"],
+                    acodeRepo: ["A", "code"],
+                    bajrangCoder: ["bajrang", "Coder"],
+                    acodexServer: ["acodex", "_", "server"],
+                    libraries: {
+                        proot: ["li", "bp", "root", ".", "so"],
+                        proot32: ["li", "bp", "root", "32", ".", "so"],
+                        talloc: ["li", "bt", "alloc", ".", "so"],
+                        prootXed: ["li", "bp", "root", "-", "xed", ".", "so"]
+                    }
+                };
 
-            const strings = {
-                protocol: ["ht", "tps", ":", "//"],
+                const rawGithubBase = buildUrl(
+                    ...strings.protocol,
+                    ...strings.rawGithubDomain,
+                    "/",
+                    ...strings.acodeFoundation,
+                    "/",
+                    ...strings.acodeRepo,
+                    "/main/src/plugins/proot/libs/"
+                );
 
-                rawGithubDomain: [
-                    "raw",
-                    ".",
-                    "github",
-                    "usercontent",
-                    ".",
-                    "com"
-                ],
+                const githubReleaseBase = buildUrl(
+                    ...strings.protocol,
+                    ...strings.githubDomain,
+                    "/",
+                    ...strings.bajrangCoder,
+                    "/",
+                    ...strings.acodexServer,
+                    "/releases/latest/download/"
+                );
 
-                githubDomain: [
-                    "git",
-                    "hub",
-                    ".",
-                    "com"
-                ],
+                const libraryBaseUrl = buildUrl(
+                    rawGithubBase,
+                    architecture.libraryDirectory,
+                    "/"
+                );
 
-                alpineDomain: [
-                    "dl",
-                    "-",
-                    "cdn",
-                    ".",
-                    "alpine",
-                    "linux",
-                    ".",
-                    "org"
-                ],
-
-                acodeFoundation: [
-                    "Acode",
-                    "-",
-                    "Foundation"
-                ],
-
-                acodeRepo: [
-                    "A",
-                    "code"
-                ],
-
-                bajrangCoder: [
-                    "bajrang",
-                    "Coder"
-                ],
-
-                acodexServer: [
-                    "acodex",
-                    "_",
-                    "server"
-                ],
-
-                libraries: {
-                    proot: ["li", "bp", "root", ".", "so"],
-                    proot32: ["li", "bp", "root", "32", ".", "so"],
-                    talloc: ["li", "bt", "alloc", ".", "so"],
-                    prootXed: ["li", "bp", "root", "-", "xed", ".", "so"]
-                }
-            };
-
-            const rawGithubBase = buildUrl(
-                ...strings.protocol,
-                ...strings.rawGithubDomain,
-                "/",
-                ...strings.acodeFoundation,
-                "/",
-                ...strings.acodeRepo,
-                "/main/src/plugins/proot/libs/"
-            );
-
-            const githubReleaseBase = buildUrl(
-                ...strings.protocol,
-                ...strings.githubDomain,
-                "/",
-                ...strings.bajrangCoder,
-                "/",
-                ...strings.acodexServer,
-                "/releases/latest/download/"
-            );
-
-            const alpineBase = buildUrl(
-                ...strings.protocol,
-                ...strings.alpineDomain,
-                "/alpine/v3.21/releases/"
-            );
-
-            const libraryBaseUrl = buildUrl(
-                rawGithubBase,
-                architecture.libraryDirectory,
-                "/"
-            );
-
-            const libproot = buildUrl(
-                libraryBaseUrl,
-                ...strings.libraries.proot
-            );
-
-            const libTalloc = buildUrl(
-                libraryBaseUrl,
-                ...strings.libraries.talloc
-            );
-
-            const prootUrl = buildUrl(
-                libraryBaseUrl,
-                ...strings.libraries.prootXed
-            );
-
-            const libproot32 = architecture.hasLibproot32
-                ? buildUrl(
+                const libproot = buildUrl(
                     libraryBaseUrl,
-                    ...strings.libraries.proot32
-                )
-                : null;
+                    ...strings.libraries.proot
+                );
 
-            const axsUrl = buildUrl(
-                githubReleaseBase,
-                "axs-pie-android-",
-                architecture.axsArchitecture
-            );
+                const libTalloc = buildUrl(
+                    libraryBaseUrl,
+                    ...strings.libraries.talloc
+                );
 
-            const alpineUrl = buildUrl(
-                alpineBase,
-                architecture.alpineDirectory,
-                "/",
-                architecture.alpineFilename
-            );
+                const prootUrl = buildUrl(
+                    libraryBaseUrl,
+                    ...strings.libraries.prootXed
+                );
 
-                logger("⬇️  Downloading sandbox filesystem...");
-                await downloadFile(alpineUrl, cordova.file.dataDirectory + "alpine.tar.gz", "Sandbox filesystem");
+                const libproot32 = architecture.hasLibproot32
+                    ? buildUrl(
+                        libraryBaseUrl,
+                        ...strings.libraries.proot32
+                    )
+                    : null;
+
+                const axsUrl = buildUrl(
+                    githubReleaseBase,
+                    "axs-pie-android-",
+                    architecture.axsArchitecture
+                );
+
+                logger("⬇️  Downloading Ubuntu 24.04 filesystem...");
+                await downloadFile(ubuntuUrl, cordova.file.dataDirectory + "ubuntu.tar.gz", "Ubuntu filesystem");
 
                 logger("⬇️  Downloading axs...");
                 await downloadFile(axsUrl, cordova.file.dataDirectory + "axs", "AXS");
@@ -328,47 +346,42 @@ const Terminal = {
                 }
 
                 logger("✅  All downloads completed");
-            }else{
-                logger("📦  Extracting assets...");
-                await new Promise((resolve, reject) => {
-                    system.extractAsset(`alpine_assets/${architecture.libraryDirectory}/alpine.rootfs`, `${filesDir}/alpine.tar.gz`, resolve, (e)=>{
-                        console.error(`Failed to extract alpine.tar.gz: ${formatError(e)}`);
-                        reject(e);
-                    });
-                });
+            } else {
+                logger("⬇️  Downloading Ubuntu 24.04 filesystem...");
+                await downloadFile(ubuntuUrl, cordova.file.dataDirectory + "ubuntu.tar.gz", "Ubuntu filesystem");
 
-                try{
-                    await Executor.execute("rm -f $PREFIX/axs && ln -s $NATIVE_DIR/libaxs.so $PREFIX/axs")
-                }catch(e){
+                try {
+                    await Executor.execute("rm -f $PREFIX/axs && ln -s $NATIVE_DIR/libaxs.so $PREFIX/axs");
+                } catch (e) {
                     err_logger(`${formatError(e)}`);
                 }
             }
-           
 
             logger("📁  Setting up directories...");
 
             await ensureDir(`${filesDir}/.downloaded`);
 
-            const alpineDir = `${filesDir}/alpine`;
+            const distroDir = `${filesDir}/distro`;
 
-            await ensureDir(alpineDir);
+            await ensureDir(distroDir);
 
-
-            logger("📦  Extracting sandbox filesystem...");
-            await Executor.execute(`tar --no-same-owner -xf ${filesDir}/alpine.tar.gz -C ${alpineDir}`);
+            logger("📦  Extracting Ubuntu 24.04 filesystem...");
+            await Executor.execute(`tar --no-same-owner -xf ${filesDir}/ubuntu.tar.gz -C ${distroDir}`);
 
             logger("⚙️  Applying basic configuration...");
-            await writeText(`${alpineDir}/etc/resolv.conf`, `nameserver 8.8.4.4 \nnameserver 8.8.8.8`);
+            await writeText(`${distroDir}/etc/resolv.conf`, "nameserver 8.8.8.8\nnameserver 8.8.4.4\n");
+            await writeText(`${distroDir}/etc/hosts`, "127.0.0.1 localhost\n::1 localhost\n");
 
             const rmWrapper = await readAsset("rm-wrapper.sh");
-            await deleteFile(`${alpineDir}/bin/rm`).catch(() => {});
-            await writeText(`${alpineDir}/bin/rm`, rmWrapper);
-            await setExec(`${alpineDir}/bin/rm`, true);
+            await ensureDir(`${distroDir}/bin`);
+            await deleteFile(`${distroDir}/bin/rm`).catch(() => {});
+            await writeText(`${distroDir}/bin/rm`, rmWrapper);
+            await setExec(`${distroDir}/bin/rm`, true);
 
             logger("✅  Extraction complete");
             await ensureDir(`${filesDir}/.extracted`);
 
-            logger("⚙️  Updating sandbox enviroment...");
+            logger("⚙️  Updating sandbox environment...");
             const installResult = await this.startAxs(true, logger, err_logger);
             if (!installResult) {
                 throw new Error(this.lastInstallError || "Sandbox configuration failed.");
@@ -385,7 +398,20 @@ const Terminal = {
     },
 
     /**
-     * Checks if alpine is already installed.
+     * Returns the active distro type ("proot" or "chroot").
+     * @returns {Promise<string>}
+     */
+    async getDistroType() {
+        try {
+            const result = await Executor.BackgroundExecutor.execute(`cat "$PREFIX/.distro_type" 2>/dev/null || echo "proot"`);
+            return (result || "proot").trim();
+        } catch {
+            return "proot";
+        }
+    },
+
+    /**
+     * Checks if the Linux environment is already installed.
      * @returns {Promise<boolean>} - Returns true if all required files and directories exist.
      */
     isInstalled() {
@@ -394,31 +420,51 @@ const Terminal = {
                 system.getFilesDir(resolve, reject);
             });
 
-            const alpineExists = await new Promise((resolve, reject) => {
-                system.fileExists(`${filesDir}/alpine`, false, (result) => {
-                    resolve(result == 1);
-                }, reject);
-            });
+            const distroType = await (async () => {
+                try {
+                    const type = await Executor.BackgroundExecutor.execute(`cat "$PREFIX/.distro_type" 2>/dev/null`);
+                    return (type || "").trim();
+                } catch {
+                    return "";
+                }
+            })();
 
-            const downloaded = alpineExists && await new Promise((resolve, reject) => {
+            const downloaded = await new Promise((resolve, reject) => {
                 system.fileExists(`${filesDir}/.downloaded`, false, (result) => {
                     resolve(result == 1);
                 }, reject);
             });
 
-            const extracted = alpineExists && await new Promise((resolve, reject) => {
+            const extracted = await new Promise((resolve, reject) => {
                 system.fileExists(`${filesDir}/.extracted`, false, (result) => {
                     resolve(result == 1);
                 }, reject);
             });
 
-            const configured = alpineExists && await new Promise((resolve, reject) => {
+            const configured = await new Promise((resolve, reject) => {
                 system.fileExists(`${filesDir}/.configured`, false, (result) => {
                     resolve(result == 1);
                 }, reject);
             });
 
-            resolve(alpineExists && downloaded && extracted && configured);
+            if (distroType === "chroot") {
+                resolve(configured && extracted);
+                return;
+            }
+
+            const distroExists = await new Promise((resolve, reject) => {
+                system.fileExists(`${filesDir}/distro`, false, (r1) => {
+                    if (r1 == 1) return resolve(true);
+                    system.fileExists(`${filesDir}/ubuntu`, false, (r2) => {
+                        if (r2 == 1) return resolve(true);
+                        system.fileExists(`${filesDir}/alpine`, false, (r3) => {
+                            resolve(r3 == 1);
+                        }, reject);
+                    }, reject);
+                }, reject);
+            });
+
+            resolve(distroExists && downloaded && extracted && configured);
         });
     },
 
@@ -434,35 +480,34 @@ const Terminal = {
         });
     },
     /**
-     * Creates a backup of the Alpine Linux installation
+     * Creates a backup of the Linux installation
      * @async
      * @function backup
-     * @description Creates a compressed tar archive of the Alpine installation
+     * @description Creates a compressed tar archive of the installation
      * @returns {Promise<string>} Promise that resolves to the file URI of the created backup file (aterm_backup.tar)
-     * @throws {string} Rejects with "Alpine is not installed." if Alpine is not currently installed
-     * @throws {string} Rejects with command output if backup creation fails
-     * @example
-     * try {
-     *   const backupPath = await backup();
-     *   console.log(`Backup created at: ${backupPath}`);
-     * } catch (error) {
-     *   console.error(`Backup failed: ${error}`);
-     * }
      */
     backup() {
         return new Promise(async (resolve, reject) => {
             if (!await this.isInstalled()) {
-                reject("Alpine is not installed.");
+                reject("Linux distribution is not installed.");
                 return;
             }
             const cmd = `
             set -e
-            INCLUDE_FILES="alpine .downloaded .extracted .configured axs"
+            INCLUDE_FILES="distro ubuntu alpine .downloaded .extracted .configured .distro_type bin/chroot-distro axs"
+            EXISTING_INCLUDES=""
+            for f in $INCLUDE_FILES; do
+                if [ -e "$PREFIX/$f" ]; then
+                    EXISTING_INCLUDES="$EXISTING_INCLUDES $f"
+                fi
+            done
+
             if [ "$FDROID" = "true" ]; then
-                INCLUDE_FILES="$INCLUDE_FILES libtalloc.so.2 libproot-xed.so"
+                [ -e "$PREFIX/libtalloc.so.2" ] && EXISTING_INCLUDES="$EXISTING_INCLUDES libtalloc.so.2"
+                [ -e "$PREFIX/libproot-xed.so" ] && EXISTING_INCLUDES="$EXISTING_INCLUDES libproot-xed.so"
             fi
-            EXCLUDE="--exclude=alpine/data --exclude=alpine/system --exclude=alpine/vendor --exclude=alpine/sdcard --exclude=alpine/storage --exclude=alpine/public --exclude=alpine/apex --exclude=alpine/odm --exclude=alpine/product --exclude=alpine/system_ext --exclude=alpine/linkerconfig --exclude=alpine/proc --exclude=alpine/sys --exclude=alpine/dev --exclude=alpine/run --exclude=alpine/tmp"
-            tar -cf "$PREFIX/aterm_backup.tar" -C "$PREFIX" $EXCLUDE $INCLUDE_FILES
+            EXCLUDE="--exclude=*/data --exclude=*/system --exclude=*/vendor --exclude=*/sdcard --exclude=*/storage --exclude=*/public --exclude=*/apex --exclude=*/odm --exclude=*/product --exclude=*/system_ext --exclude=*/linkerconfig --exclude=*/proc --exclude=*/sys --exclude=*/dev --exclude=*/run --exclude=*/tmp"
+            tar -cf "$PREFIX/aterm_backup.tar" -C "$PREFIX" $EXCLUDE $EXISTING_INCLUDES
             echo "ok"
             `;
             const result = await Executor.execute(cmd);
@@ -474,22 +519,9 @@ const Terminal = {
         });
     },
     /**
-     * Restores Alpine Linux installation from a backup file
+     * Restores Linux installation from a backup file
      * @async
      * @function restore
-     * @description Restores the Alpine installation from a previously created backup file (aterm_backup.tar).
-     * This function stops any running Alpine processes, removes existing installation files, and extracts
-     * the backup to restore the previous state. The backup file must exist in the expected location.
-     * @returns {Promise<string>} Promise that resolves to "ok" when restoration completes successfully
-     * @throws {string} Rejects with "Backup File does not exist" if aterm_backup.tar is not found
-     * @throws {string} Rejects with command output if restoration fails
-     * @example
-     * try {
-     *   await restore();
-     *   console.log("Alpine installation restored successfully");
-     * } catch (error) {
-     *   console.error(`Restore failed: ${error}`);
-     * }
      */
     restore() {
         return new Promise(async (resolve, reject) => {
@@ -500,7 +532,7 @@ const Terminal = {
             const cmd = `
             set -e
 
-            INCLUDE_FILES="$PREFIX/alpine $PREFIX/.downloaded $PREFIX/.extracted $PREFIX/.configured $PREFIX/axs"
+            INCLUDE_FILES="$PREFIX/distro $PREFIX/ubuntu $PREFIX/alpine $PREFIX/.downloaded $PREFIX/.extracted $PREFIX/.configured $PREFIX/.distro_type $PREFIX/bin/chroot-distro $PREFIX/axs"
 
             if [ "$FDROID" = "true" ]; then
                 INCLUDE_FILES="$INCLUDE_FILES $PREFIX/libtalloc.so.2 $PREFIX/libproot-xed.so"
@@ -523,21 +555,9 @@ const Terminal = {
         });
     },
     /**
-     * Uninstalls the Alpine Linux installation
+     * Uninstalls the Linux installation
      * @async
      * @function uninstall
-     * @description Completely removes the Alpine Linux installation from the device by deleting all
-     * Alpine-related files and directories. This function stops any running Alpine processes before
-     * removal. NOTE: This does not perform cleanup of $PREFIX
-     * @returns {Promise<string>} Promise that resolves to "ok" when uninstallation completes successfully
-     * @throws {string} Rejects with command output if uninstallation fails
-     * @example
-     * try {
-     *   await uninstall();
-     *   console.log("Alpine installation removed successfully");
-     * } catch (error) {
-     *   console.error(`Uninstall failed: ${error}`);
-     * }
      */
     uninstall() {
         return new Promise(async (resolve, reject) => {
@@ -548,7 +568,7 @@ const Terminal = {
             const cmd = `
             set -e
 
-            INCLUDE_FILES="$PREFIX/alpine $PREFIX/.downloaded $PREFIX/.extracted $PREFIX/.configured $PREFIX/axs"
+            INCLUDE_FILES="$PREFIX/distro $PREFIX/ubuntu $PREFIX/alpine $PREFIX/ubuntu.tar.gz $PREFIX/alpine.tar.gz $PREFIX/.downloaded $PREFIX/.extracted $PREFIX/.configured $PREFIX/.distro_type $PREFIX/bin/chroot-distro $PREFIX/axs"
 
             if [ "$FDROID" = "true" ]; then
                 INCLUDE_FILES="$INCLUDE_FILES $PREFIX/libtalloc.so.2 $PREFIX/libproot-xed.so"

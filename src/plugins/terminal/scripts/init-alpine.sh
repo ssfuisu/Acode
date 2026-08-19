@@ -1,7 +1,20 @@
-export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/share/bin:/usr/share/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
 export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@localhost \[\033[39m\]\w \[\033[0m\]\\$ "
 export HOME=/public
 export TERM=xterm-256color
+export PIP_BREAK_SYSTEM_PACKAGES=1
+export DEBIAN_FRONTEND=noninteractive
+
+ROOTFS_DIR="$PREFIX/distro"
+if [ ! -d "$ROOTFS_DIR" ]; then
+    if [ -d "$PREFIX/ubuntu" ]; then
+        ROOTFS_DIR="$PREFIX/ubuntu"
+    elif [ -d "$PREFIX/alpine" ]; then
+        ROOTFS_DIR="$PREFIX/alpine"
+    else
+        ROOTFS_DIR="$PREFIX/distro"
+    fi
+fi
 
 INSTALLING=false
 FAILSAFE=false
@@ -33,23 +46,25 @@ if [ "$INSTALLING" != true ] && [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then
     exec "$@"
 fi
 
-required_packages="bash command-not-found tzdata wget"
-missing_packages=""
+if command -v apk >/dev/null 2>&1; then
+    required_packages="bash command-not-found tzdata wget"
+    missing_packages=""
 
-for pkg in $required_packages; do
-    if ! apk info -e "$pkg" >/dev/null 2>&1; then
-        missing_packages="$missing_packages $pkg"
-    fi
-done
+    for pkg in $required_packages; do
+        if ! apk info -e "$pkg" >/dev/null 2>&1; then
+            missing_packages="$missing_packages $pkg"
+        fi
+    done
 
-if [ -n "$missing_packages" ]; then
-    echo -e "\e[34;1m[*] \e[0mInstalling important packages\e[0m"
-    apk update && apk upgrade
-    apk add $missing_packages
-    if [ $? -eq 0 ]; then
-        echo -e "\e[32;1m[+] \e[0mSuccessfully installed\e[0m"
+    if [ -n "$missing_packages" ]; then
+        echo -e "\e[34;1m[*] \e[0mInstalling important packages\e[0m"
+        apk update && apk upgrade
+        apk add $missing_packages
+        if [ $? -eq 0 ]; then
+            echo -e "\e[32;1m[+] \e[0mSuccessfully installed\e[0m"
+        fi
+        echo -e "\e[34m[*] \e[0mUse \e[32mapk\e[0m to install new packages\e[0m"
     fi
-    echo -e "\e[34m[*] \e[0mUse \e[32mapk\e[0m to install new packages\e[0m"
 fi
 
 
@@ -83,26 +98,46 @@ fi
 
 
     echo "$$" > "$PREFIX/pid"
-    chmod +x "$PREFIX/axs"
+    chmod +x "$PREFIX/axs" 2>/dev/null || :
 
-    if [ ! -e "$PREFIX/alpine/etc/acode_motd" ]; then
-        cat <<EOF > "$PREFIX/alpine/etc/acode_motd"
+    if [ ! -e "$ROOTFS_DIR/etc/acode_motd" ]; then
+        if command -v apt-get >/dev/null 2>&1 || [ -f "$ROOTFS_DIR/etc/debian_version" ]; then
+            cat <<EOF > "$ROOTFS_DIR/etc/acode_motd"
+Welcome to Ubuntu 24.04 LTS (Noble) in Acode!
+
+Working with packages:
+ - Search:    apt search <query>
+ - Install:   apt install <package>
+ - Uninstall: apt remove <package>
+ - Upgrade:   apt update && apt upgrade
+
+Python & Pip:
+ - Python 3 with glibc pre-compiled wheels supported!
+ - Install packages: pip install <package>
+
+Acode CLI:
+ - Open file:   acode <filename>
+ - Open folder: acode .
+
+EOF
+        else
+            cat <<EOF > "$ROOTFS_DIR/etc/acode_motd"
 Welcome to Alpine Linux in Acode!
 
 Working with packages:
-
  - Search:  apk search <query>
  - Install: apk add <package>
  - Uninstall: apk del <package>
  - Upgrade: apk update && apk upgrade
 
 EOF
+        fi
     fi
 
     # Create acode CLI tool
-    if [ ! -e "$PREFIX/alpine/usr/local/bin/acode" ]; then
-        mkdir -p "$PREFIX/alpine/usr/local/bin"
-        cat <<'ACODE_CLI' > "$PREFIX/alpine/usr/local/bin/acode"
+    if [ ! -e "$ROOTFS_DIR/usr/local/bin/acode" ]; then
+        mkdir -p "$ROOTFS_DIR/usr/local/bin"
+        cat <<'ACODE_CLI' > "$ROOTFS_DIR/usr/local/bin/acode"
 #!/bin/bash
 # acode - Open files/folders in Acode editor
 # Uses OSC escape sequences to communicate with the Acode terminal
@@ -177,13 +212,13 @@ for arg in "$@"; do
     esac
 done
 ACODE_CLI
-        chmod +x "$PREFIX/alpine/usr/local/bin/acode"
+        chmod +x "$ROOTFS_DIR/usr/local/bin/acode"
     fi
 
     # Create initrc if it doesn't exist
-    #initrc runs in bash so we can use bash features
-if [ ! -e "$PREFIX/alpine/initrc" ]; then
-    cat <<'EOF' > "$PREFIX/alpine/initrc"
+    # initrc runs in bash so we can use bash features
+if [ ! -e "$ROOTFS_DIR/initrc" ]; then
+    cat <<'EOF' > "$ROOTFS_DIR/initrc"
 # Source rc files if they exist
 
 if [ -f "/etc/profile" ]; then
@@ -191,7 +226,7 @@ if [ -f "/etc/profile" ]; then
 fi
 
 # Environment setup
-export PATH=$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 export HOME=/public
 export TERM=xterm-256color
@@ -199,8 +234,6 @@ SHELL=/bin/bash
 export PIP_BREAK_SYSTEM_PACKAGES=1
 
 # Default prompt with fish-style path shortening (~/p/s/components)
-# To use custom prompts (Starship, Oh My Posh, etc.), just init them in ~/.bashrc:
-#   eval "$(starship init bash)"
 _shorten_path() {
     local path="$PWD"
 
@@ -289,7 +322,6 @@ _acode_preexec() {
 }
 
 # Preserve any existing DEBUG trap and append our handler instead of overwriting it.
-# This avoids clobbering user-installed preexec hooks (starship, fzf, bash-preexec, etc.).
 __acode_existing_debug_trap="$(trap -p DEBUG 2>/dev/null)"
 if [[ -n "${__acode_existing_debug_trap}" ]]; then
     __acode_existing_cmd="$(printf "%s" "${__acode_existing_debug_trap}" | sed -E "s/.*'((.*)?)'.*/\1/")"
@@ -314,12 +346,17 @@ command_not_found_handle() {
     green="\e[1;32m"
     reset="\e[0m"
 
-    pkg=$(apk search -x "cmd:$cmd" 2>/dev/null | awk -F'-[0-9]' '{print $1}' | head -n 1)
-
-    if [ -n "$pkg" ]; then
-        echo -e "The program '$cmd' is not installed.\nInstall it by executing:\n ${green}apk add $pkg${reset}" >&2
+    if command -v apt >/dev/null 2>&1; then
+        echo -e "The program '$cmd' is not installed.\nInstall it by executing:\n ${green}apt install $cmd${reset}" >&2
+    elif command -v apk >/dev/null 2>&1; then
+        pkg=$(apk search -x "cmd:$cmd" 2>/dev/null | awk -F'-[0-9]' '{print $1}' | head -n 1)
+        if [ -n "$pkg" ]; then
+            echo -e "The program '$cmd' is not installed.\nInstall it by executing:\n ${green}apk add $pkg${reset}" >&2
+        else
+            echo "The program '$cmd' is not installed and no package provides it." >&2
+        fi
     else
-        echo "The program '$cmd' is not installed and no package provides it." >&2
+        echo "The program '$cmd' is not installed." >&2
     fi
 
     return 127
@@ -329,7 +366,9 @@ command_not_found_handle() {
 alias clear='reset'
 
 # Source user configs AFTER defaults (so user can override everything)
-if [ -f /etc/bash/bashrc ]; then
+if [ -f /etc/bash.bashrc ]; then
+    source /etc/bash.bashrc
+elif [ -f /etc/bash/bashrc ]; then
     source /etc/bash/bashrc
 fi
 
@@ -341,17 +380,17 @@ EOF
 fi
 
 # Add PS1 only if not already present
-if ! grep -q 'PS1=' "$PREFIX/alpine/initrc"; then
-    # Smart path shortening (fish-style: ~/p/s/components)
-    echo 'PS1="\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\$_PS1_PATH\[\033[0m\] \[\$([ \$_PS1_EXIT -ne 0 ] && echo \"\033[31m\")\]\$\[\033[0m\] "' >> "$PREFIX/alpine/initrc"
-    # Simple prompt (uncomment below and comment above if you prefer full paths)
-    # echo 'PS1="\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ "' >> "$PREFIX/alpine/initrc"
+if ! grep -q 'PS1=' "$ROOTFS_DIR/initrc"; then
+    echo 'PS1="\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\$_PS1_PATH\[\033[0m\] \[\$([ \$_PS1_EXIT -ne 0 ] && echo \"\033[31m\")\]\$\[\033[0m\] "' >> "$ROOTFS_DIR/initrc"
 fi
 
 
-chmod +x "$PREFIX/alpine/initrc"
+chmod +x "$ROOTFS_DIR/initrc"
 
 if [ "$FAILSAFE" != true ]; then
-    #everytime a terminal is started initrc will run
-    "$PREFIX/axs" -c "bash --rcfile /initrc -i"
+    if command -v bash >/dev/null 2>&1; then
+        "$PREFIX/axs" -c "bash --rcfile /initrc -i"
+    else
+        "$PREFIX/axs" -c "sh"
+    fi
 fi

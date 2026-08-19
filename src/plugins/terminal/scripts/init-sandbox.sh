@@ -1,8 +1,34 @@
 export LD_LIBRARY_PATH=$PREFIX
 
 mkdir -p "$PREFIX/tmp"
-mkdir -p "$PREFIX/alpine/tmp"
 mkdir -p "$PREFIX/public"
+
+DISTRO_TYPE="proot"
+if [ -f "$PREFIX/.distro_type" ]; then
+    DISTRO_TYPE="$(cat "$PREFIX/.distro_type" 2>/dev/null || echo "proot")"
+fi
+
+if [ "$DISTRO_TYPE" = "chroot" ]; then
+    echo "$$" > "$PREFIX/pid"
+    chmod +x "$PREFIX/bin/chroot-distro" 2>/dev/null || :
+    chmod +x "$PREFIX/axs" 2>/dev/null || :
+
+    # In chroot mode, run AXS with chroot-distro login ubuntu
+    exec "$PREFIX/axs" -c "su -c 'sh $PREFIX/bin/chroot-distro login ubuntu'"
+fi
+
+# Determine rootfs directory (Ubuntu / Alpine fallback)
+ROOTFS_DIR="$PREFIX/distro"
+if [ ! -d "$ROOTFS_DIR" ]; then
+    if [ -d "$PREFIX/ubuntu" ]; then
+        ROOTFS_DIR="$PREFIX/ubuntu"
+    elif [ -d "$PREFIX/alpine" ]; then
+        ROOTFS_DIR="$PREFIX/alpine"
+    else
+        ROOTFS_DIR="$PREFIX/distro"
+    fi
+fi
+mkdir -p "$ROOTFS_DIR/tmp"
 
 export PROOT_TMP_DIR=$PREFIX/tmp
 
@@ -18,7 +44,7 @@ if [ "$FDROID" = "true" ]; then
 
 
     export PROOT="$PREFIX/libproot-xed.so"
-    chmod +x $PREFIX/*
+    chmod +x $PREFIX/* 2>/dev/null || :
 else
     if [ -f "$NATIVE_DIR/libproot.so" ]; then
         export PROOT_LOADER="$NATIVE_DIR/libproot.so"
@@ -39,8 +65,6 @@ fi
 
 ARGS="--kill-on-exit"
 
-
-
 for system_mnt in /apex /odm /product /system /system_ext /vendor /linkerconfig/ld.config.txt /linkerconfig/com.android.art/ld.config.txt /plat_property_contexts /property_contexts; do
 
  if [ -e "$system_mnt" ]; then
@@ -48,9 +72,6 @@ for system_mnt in /apex /odm /product /system /system_ext /vendor /linkerconfig/
   ARGS="$ARGS -b ${system_mnt}"
  fi
 done
-
-
-
 
 unset system_mnt
 
@@ -66,7 +87,7 @@ ARGS="$ARGS -b $NATIVE_DIR"
 ARGS="$ARGS -b $PREFIX/public:/public"
 ARGS="$ARGS -b $PREFIX/public:/home"
 ARGS="$ARGS -b $PREFIX/public:/root"
-ARGS="$ARGS -b $PREFIX/alpine/tmp:/dev/shm"
+ARGS="$ARGS -b $ROOTFS_DIR/tmp:/dev/shm"
 
 
 if [ -e "/proc/self/fd" ]; then
@@ -86,7 +107,7 @@ if [ -e "/proc/self/fd/2" ]; then
 fi
 
 
-ARGS="$ARGS -r $PREFIX/alpine"
+ARGS="$ARGS -r $ROOTFS_DIR"
 ARGS="$ARGS -0"
 ARGS="$ARGS --link2symlink"
 ARGS="$ARGS --sysvipc"

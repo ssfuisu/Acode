@@ -1,0 +1,68 @@
+name: Build Acode APK
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Cordova CLI
+        run: npm install -g cordova
+
+      - name: Install Project Dependencies
+        run: |
+          npm install
+          npm run setup
+
+      - name: Build Normal Debug APK
+        run: |
+          node utils/storage_manager.mjs y
+          npm run build paid dev apk
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p dist-apks
+          if [ -f platforms/android/app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp platforms/android/app/build/outputs/apk/debug/app-debug.apk dist-apks/Acode-Ubuntu24-Debug.apk
+            sha256sum dist-apks/Acode-Ubuntu24-Debug.apk > dist-apks/Acode-Ubuntu24-Debug.apk.sha256
+          fi
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Acode-Ubuntu24-Debug-APK
+          path: dist-apks/*
+          retention-days: 30
