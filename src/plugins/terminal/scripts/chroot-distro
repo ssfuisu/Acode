@@ -44,16 +44,14 @@ chroot_distro_exit() {
   fi
 }
 
-operating_system="$(uname -o)"
+operating_system="$(uname -o 2>/dev/null || echo Linux)"
 
 if [ -n "${CHROOT_DISTRO_PATH}" ]; then
     chroot_distro_path="${CHROOT_DISTRO_PATH}"
-else
+elif [ -d "/data/local" ] || [ -d "/data" ] || [ -d "/system" ] || [ -f "/system/build.prop" ]; then
     chroot_distro_path="/data/local/chroot-distro"
-    if [ "${operating_system}" = "GNU/Linux" ] || [ "${operating_system}" = "Linux" ]; then
-         # If the system is Gnu/Linux, use /opt instead of /data/local 
-         chroot_distro_path="/opt/chroot-distro"
-    fi
+else
+    chroot_distro_path="/opt/chroot-distro"
 fi
 
 script=$(basename "$0")
@@ -252,15 +250,53 @@ uname() {
     fi
 }
 
-# ensure that busybox version of getopt is used
+# ensure that getopt works reliably with or without external binary
 getopt() {
-    if [ -n "$busyboxpath" ] && "$busyboxpath" getopt --test >/dev/null 2>&1; then
-        busybox getopt "$@"
-    elif command -v getopt >/dev/null 2>&1; then
-        command getopt "$@"
-    else
-        "$@"
+    if [ "$1" = "--test" ]; then
+        return 4
     fi
+    if [ -n "$busyboxpath" ] && "$busyboxpath" getopt --test >/dev/null 2>&1; then
+        "$busyboxpath" getopt "$@"
+        return $?
+    fi
+    if [ -x "$(command -v getopt 2>/dev/null)" ] && command getopt --test >/dev/null 2>&1; then
+        command getopt "$@"
+        return $?
+    fi
+
+    # Pure POSIX sh fallback
+    local flags=""
+    local positionals=""
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "--" ]; then
+            shift
+            break
+        fi
+        shift
+    done
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --user)
+                flags="$flags --user \"$2\""
+                shift 2
+                ;;
+            -u)
+                flags="$flags -u \"$2\""
+                shift 2
+                ;;
+            -f|--force|-a|--all|-i|--installed|-h|--help|-v|--version|-*)
+                flags="$flags $1"
+                shift
+                ;;
+            *)
+                positionals="$positionals \"$1\""
+                shift
+                ;;
+        esac
+    done
+    printf "%s --%s\n" "$flags" "$positionals"
+    return 0
 }
 
 # ensure that busybox version of tar is used

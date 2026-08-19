@@ -225,7 +225,7 @@ const Terminal = {
                             resolve(ok);
                         }
                     }).then(async (uuid) => {
-                        await Executor.write(uuid, `sh ${filesDir}/bin/chroot-distro install ubuntu "${ubuntuUrl}"; exit $?\n`);
+                        await Executor.write(uuid, `export CHROOT_DISTRO_PATH=/data/local/chroot-distro; sh ${filesDir}/bin/chroot-distro install ubuntu "${ubuntuUrl}"; exit $?\n`);
                     }).catch((err) => {
                         const msg = formatError(err);
                         this.lastInstallError = msg;

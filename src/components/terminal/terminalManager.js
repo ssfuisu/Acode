@@ -427,12 +427,16 @@ class TerminalManager {
 	/**
 	 * Check if terminal is installed and install if needed
 	 * @returns {Promise<{success: boolean, error?: string}>}
+	/**
+	 * Check if terminal is installed and install if needed
+	 * @param {boolean} forceSelect - Whether to force environment selection
+	 * @returns {Promise<{success: boolean, error?: string}>}
 	 */
-	async checkAndInstallTerminal() {
+	async checkAndInstallTerminal(forceSelect = false) {
 		try {
 			// Check if terminal is already installed
 			const isInstalled = await Terminal.isInstalled();
-			if (isInstalled) {
+			if (isInstalled && !forceSelect) {
 				return { success: true };
 			}
 
@@ -445,20 +449,22 @@ class TerminalManager {
 				};
 			}
 
+			const currentDistro = await Terminal.getDistroType();
+
 			// Prompt user to select terminal environment (proot-distro vs chroot-distro)
 			const distroChoice = await select(
 				strings["choose terminal environment"] || "Choose Terminal Environment",
 				[
 					{
 						value: "proot",
-						text: "proot-distro (rootless)",
+						text: `proot-distro (rootless)${currentDistro === "proot" && isInstalled ? " [Active]" : ""}`,
 						subText:
 							"Ubuntu 24.04 (Noble) via PRoot. No root required. Full Python & wheel support.",
 						icon: "icon-folder",
 					},
 					{
 						value: "chroot",
-						text: "chroot-distro (root)",
+						text: `chroot-distro (root)${currentDistro === "chroot" && isInstalled ? " [Active]" : ""}`,
 						subText:
 							"Ubuntu 24.04 via sabamdarif chroot-distro. Requires Root (SU). Native kernel speed.",
 						icon: "icon-flash_on",
@@ -473,6 +479,11 @@ class TerminalManager {
 				};
 			}
 
+			// If already installed and choice matches active distro, return success immediately
+			if (isInstalled && distroChoice === currentDistro) {
+				return { success: true };
+			}
+
 			// Create installation progress terminal
 			const installTerminal = await this.createInstallationTerminal();
 
@@ -480,7 +491,7 @@ class TerminalManager {
 			const installResult = await Terminal.install(
 				distroChoice,
 				(message) => {
-					// Remove stdout/stderr prefix for
+					// Remove stdout/stderr prefix
 					const cleanMessage = this.formatInstallLog(message);
 					installTerminal.component.write(`${cleanMessage}\r\n`);
 				},
@@ -511,6 +522,23 @@ class TerminalManager {
 				success: false,
 				error: `Terminal installation failed: ${this.formatInstallLog(error)}`,
 			};
+		}
+	}
+
+	/**
+	 * Prompt to switch terminal environment and open new terminal session
+	 */
+	async promptAndSwitchTerminal() {
+		try {
+			const result = await this.checkAndInstallTerminal(true);
+			if (result.success) {
+				await this.createServerTerminal();
+			} else if (result.error && result.error !== "Installation cancelled by user") {
+				window.toast(result.error);
+			}
+		} catch (error) {
+			console.error("Failed to switch terminal environment:", error);
+			window.toast("Failed to switch terminal environment");
 		}
 	}
 

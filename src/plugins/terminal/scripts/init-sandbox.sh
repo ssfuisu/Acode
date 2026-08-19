@@ -14,7 +14,7 @@ if [ "$DISTRO_TYPE" = "chroot" ]; then
     chmod +x "$PREFIX/axs" 2>/dev/null || :
 
     # In chroot mode, run AXS with chroot-distro login ubuntu
-    exec "$PREFIX/axs" -c "su -c 'sh $PREFIX/bin/chroot-distro login ubuntu'"
+    exec "$PREFIX/axs" -c "su -c 'export CHROOT_DISTRO_PATH=/data/local/chroot-distro; sh $PREFIX/bin/chroot-distro login ubuntu'"
 fi
 
 # Determine rootfs directory (Ubuntu / Alpine fallback)

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-release-apk:
-    name: Build & Release APK
+    name: Build and Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -81,16 +81,16 @@ jobs:
           tag_name: latest-release
           name: "Acode Ubuntu 24.04 Release APK"
           body: |
-            ## 🚀 Acode with Ubuntu 24.04 LTS (Noble)
+            ## Acode with Ubuntu 24.04 LTS (Noble)
             
-            ### ✨ Özellikler:
-            - **proot-distro (rootless)**: Root gerektirmeyen Ubuntu 24.04 LTS Noble Numbat (glibc) ortamı. Tam `pip`, `numpy`, Python kütüphaneleri desteği.
-            - **chroot-distro (root)**: Sabamdarif'in resmi açık kaynaklı `chroot-distro` aracıyla tam çekirdek hızında, güvenli otomatik mount ve login.
-            - **Gruplar Hatası Düzeltildi**: Android UID/GID uyumsuzluğu tamamen giderildi (`groups: cannot find name for group ID` uyarısı yok).
-            - **Acode CLI**: Editör içi dosya açma desteği (`acode <dosya>`).
+            ### Features:
+            - **proot-distro (rootless)**: Ubuntu 24.04 LTS Noble Numbat (glibc) environment without root. Full support for Python, pip, and binary wheels.
+            - **chroot-distro (root)**: sabamdarif open-source chroot-distro integration with automatic isolation, mounting, and login.
+            - **Group Warnings Resolved**: Fixed Android UID/GID mapping in Ubuntu rootfs.
+            - **Acode CLI**: Open files and directories directly in editor using `acode <path>`.
             
-            ### 📥 Doğrudan İndir (Tek Dosya APK):
-            Aşağıdaki bağlantıdan **Acode-Ubuntu24-Release.apk** dosyasını doğrudan indirebilirsiniz (zip olmadan tek dosya APK).
+            ### Download:
+            Directly download the single-file **Acode-Ubuntu24-Release.apk** below.
           files: dist-apks/Acode-Ubuntu24-Release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
