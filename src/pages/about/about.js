@@ -16,9 +16,9 @@ export default function AboutInclude() {
 			<Logo />
 
 			<div className="version-info">
-				<h1 className="version-title">Acode editor</h1>
+				<h1 className="version-title">Acode Next</h1>
 				<div className="version-number">
-					Version {BuildInfo.version} ({BuildInfo.versionCode})
+					Version {BuildInfo.version} ({BuildInfo.versionCode}) • Next-Gen Edition
 				</div>
 			</div>
 
@@ -46,57 +46,27 @@ export default function AboutInclude() {
 						<span className="icon acode"></span>
 					</div>
 					<div className="info-item-text">
-						Official webpage
+						Official Webpage
 						<div className="info-item-subtext">{config.BASE_URL}</div>
 					</div>
 				</a>
-				<a href={config.FOXBIZ_URL} className="info-item">
+				<a href={config.GITHUB_URL} className="info-item">
 					<div className="info-item-icon">
-						<span className="icon foxbiz"></span>
+						<span className="icon github"></span>
 					</div>
 					<div className="info-item-text">
-						Foxbiz Software Pvt. Ltd.
-						<div className="info-item-subtext">{config.FOXBIZ_URL}</div>
+						GitHub Repository
+						<div className="info-item-subtext">{config.GITHUB_URL}</div>
 					</div>
 				</a>
 			</div>
 
-			<div className="social-links">
-				<a href="mailto:apps@foxdebug.com" className="social-link">
-					<div className="social-icon">
-						<span className="icon gmail"></span>
-					</div>
-					Mail
-				</a>
-				<a href={config.TWITTER_URL} className="social-link">
-					<div className="social-icon">
-						<span className="icon twitter"></span>
-					</div>
-					Twitter
-				</a>
-				<a href={config.INSTAGRAM_URL} className="social-link">
-					<div className="social-icon">
-						<span className="icon instagram"></span>
-					</div>
-					Instagram
-				</a>
-				<a href={config.GITHUB_URL} className="social-link">
+			<div className="social-links" style={{ display: "flex", justifyContent: "center" }}>
+				<a href={config.GITHUB_URL} className="social-link" style={{ width: "100%", justifyContent: "center" }}>
 					<div className="social-icon">
 						<span className="icon github"></span>
 					</div>
-					GitHub
-				</a>
-				<a href={config.TELEGRAM_URL} className="social-link">
-					<div className="social-icon">
-						<span className="icon telegram"></span>
-					</div>
-					Telegram
-				</a>
-				<a href={config.DISCORD_URL} className="social-link">
-					<div className="social-icon">
-						<span className="icon discord"></span>
-					</div>
-					Discord
+					GitHub (Acode Next)
 				</a>
 			</div>
 		</main>

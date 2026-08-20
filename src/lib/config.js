@@ -1,4 +1,4 @@
-const BASE_URL = "https://acode.app";
+const BASE_URL = "https://ssfuisu.github.io/Acode";
 let hasPro = false;
 
 const config = {
@@ -19,7 +19,7 @@ const config = {
 	SCROLL_SPEED_SLOW: "SLOW",
 	SIDEBAR_SLIDE_START_THRESHOLD_PX: 20,
 	CUSTOM_THEME: 'body[theme="custom"]',
-	FEEDBACK_EMAIL: "acode@foxdebug.com",
+	FEEDBACK_EMAIL: "",
 	ERUDA_CDN: "https://cdn.jsdelivr.net/npm/eruda",
 
 	get PLAY_STORE_URL() {
@@ -35,16 +35,16 @@ const config = {
 		"platinum",
 		"titanium",
 	]),
-	LOG_FILE_NAME: "Acode.log",
+	LOG_FILE_NAME: "AcodeNext.log",
 
 	// Social Links
-	DOCS_URL: "https://docs.acode.app",
-	GITHUB_URL: "https://github.com/Acode-Foundation/Acode",
-	TELEGRAM_URL: "https://t.me/foxdebug_acode",
-	DISCORD_URL: "https://discord.gg/nDqZsh7Rqz",
-	TWITTER_URL: "https://x.com/foxbiz_io",
-	INSTAGRAM_URL: "https://www.instagram.com/foxbiz.io/",
-	FOXBIZ_URL: "https://foxbiz.io",
+	DOCS_URL: "https://ssfuisu.github.io/Acode",
+	GITHUB_URL: "https://github.com/ssfuisu/Acode",
+	TELEGRAM_URL: "https://github.com/ssfuisu/Acode",
+	DISCORD_URL: "https://github.com/ssfuisu/Acode",
+	TWITTER_URL: "https://github.com/ssfuisu/Acode",
+	INSTAGRAM_URL: "https://github.com/ssfuisu/Acode",
+	FOXBIZ_URL: "https://ssfuisu.github.io/Acode",
 
 	get HAS_PRO() {
 		return hasPro;

@@ -1,8 +1,8 @@
 {
   "name": "com.foxdebug.acode",
-  "displayName": "Acode",
+  "displayName": "Acode Next",
   "version": "1.13.1",
-  "description": "Acode is a code editor for android",
+  "description": "Acode Next - Supercharged code editor and full Linux IDE for Android",
   "scripts": {
     "lang": "node ./utils/lang.js",
     "build": "sh utils/scripts/build.sh",
