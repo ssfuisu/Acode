@@ -733,12 +733,7 @@ Additional Info:
 			const { TerminalManager } = await import(
 				/* webpackChunkName: "terminal" */ "components/terminal"
 			);
-			const activeFile = window.editorManager?.activeFile;
-			if (activeFile?.type === "terminal") {
-				await TerminalManager.promptAndSwitchTerminal();
-			} else {
-				await TerminalManager.createServerTerminal();
-			}
+			await TerminalManager.createServerTerminal();
 		} catch (error) {
 			console.error("Failed to create terminal:", error);
 			window.toast("Failed to create terminal");

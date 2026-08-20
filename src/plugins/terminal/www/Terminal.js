@@ -123,19 +123,12 @@ const Terminal = {
     },
 
     /**
-     * Installs Linux distribution (Ubuntu 24.04 LTS Noble) via PRoot (rootless) or Chroot (root).
-     * @param {string|Function} [distroType="proot"] - "proot" or "chroot".
-     * @param {Function} [logger=console.log] - Function to log standard output.
-     * @param {Function} [err_logger=console.error] - Function to log errors.
+     * Installs Linux distribution (Ubuntu 24.04 LTS Noble) via PRoot.
+     * @param {Function} [logger=console.log] - Log callback for installation progress.
+     * @param {Function} [err_logger=console.error] - Error callback.
      * @returns {Promise<boolean>} - Returns true if installation completes successfully.
      */
-    async install(distroType = "proot", logger = console.log, err_logger = console.error) {
-        if (typeof distroType === "function") {
-            err_logger = logger;
-            logger = distroType;
-            distroType = "proot";
-        }
-
+    async install(logger = console.log, err_logger = console.error) {
         if (!(await this.isSupported())) return false;
 
         const isFdroid = await Executor.execute("echo $FDROID");
@@ -186,68 +179,9 @@ const Terminal = {
             }
 
             // ==========================================
-            // CHROOT DISTRO (ROOT MODE)
-            // ==========================================
-            if (distroType === "chroot") {
-                logger("⚡ Setting up chroot-distro for root environment...");
-
-                await ensureDir(`${filesDir}/bin`);
-                await ensureDir(`${filesDir}/.downloaded`);
-
-                // Write chroot-distro script from bundled assets
-                const chrootDistroScript = await readAsset("chroot-distro");
-                await writeText(`${filesDir}/bin/chroot-distro`, chrootDistroScript);
-                await setExec(`${filesDir}/bin/chroot-distro`, true);
-
-                if (isFdroid !== "true") {
-                    await Executor.execute("rm -f $PREFIX/axs && ln -s $NATIVE_DIR/libaxs.so $PREFIX/axs");
-                }
-
-                await writeText(`${filesDir}/.distro_type`, "chroot");
-
-                logger("📦 Installing Ubuntu 24.04 LTS (Noble) via chroot-distro...");
-                logger("ℹ️ Requesting root (su) access...");
-
-                const ubuntuUrl = `https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-${architecture.ubuntuArch}.tar.gz`;
-
-                const installSuccess = await new Promise((resolve, reject) => {
-                    let lastErr = "";
-                    Executor.start("su", (type, data) => {
-                        logger(`${type === "stderr" ? "⚠️" : "▶"} ${data}`);
-                        if (type === "stderr" && data) {
-                            lastErr = lastErr ? `${lastErr}\n${data}` : data;
-                        }
-                        if (type === "exit") {
-                            const ok = data === "0";
-                            if (!ok) {
-                                this.lastInstallError = lastErr || `chroot-distro exited with code ${data}`;
-                            }
-                            resolve(ok);
-                        }
-                    }).then(async (uuid) => {
-                        await Executor.write(uuid, `export CHROOT_DISTRO_PATH=/data/local/chroot-distro; sh ${filesDir}/bin/chroot-distro download ubuntu "${ubuntuUrl}" && sh ${filesDir}/bin/chroot-distro install ubuntu; exit $?\n`);
-                    }).catch((err) => {
-                        const msg = formatError(err);
-                        this.lastInstallError = msg;
-                        err_logger(msg);
-                        resolve(false);
-                    });
-                });
-
-                if (!installSuccess) {
-                    throw new Error(this.lastInstallError || "chroot-distro install failed. Please check SU permissions.");
-                }
-
-                await ensureDir(`${filesDir}/.extracted`);
-                await ensureDir(`${filesDir}/.configured`);
-                logger("✅ chroot-distro Ubuntu 24.04 installed successfully!");
-                return true;
-            }
-
-            // ==========================================
             // PROOT DISTRO (ROOTLESS MODE - UBUNTU 24.04)
             // ==========================================
-            logger("🚀 Setting up proot-distro (Ubuntu 24.04 Noble)...");
+            logger("🚀 Setting up proot-distro (Ubuntu 24.04 LTS Noble)...");
             await writeText(`${filesDir}/.distro_type`, "proot");
 
             const ubuntuUrl = `https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-${architecture.ubuntuArch}.tar.gz`;
@@ -436,15 +370,6 @@ const Terminal = {
                 system.getFilesDir(resolve, reject);
             });
 
-            const distroType = await (async () => {
-                try {
-                    const type = await Executor.BackgroundExecutor.execute(`cat "$PREFIX/.distro_type" 2>/dev/null`);
-                    return (type || "").trim();
-                } catch {
-                    return "";
-                }
-            })();
-
             const downloaded = await new Promise((resolve, reject) => {
                 system.fileExists(`${filesDir}/.downloaded`, false, (result) => {
                     resolve(result == 1);
@@ -462,11 +387,6 @@ const Terminal = {
                     resolve(result == 1);
                 }, reject);
             });
-
-            if (distroType === "chroot") {
-                resolve(configured && extracted);
-                return;
-            }
 
             const distroExists = await new Promise((resolve, reject) => {
                 system.fileExists(`${filesDir}/distro`, false, (r1) => {

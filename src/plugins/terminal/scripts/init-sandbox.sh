@@ -3,20 +3,6 @@ export LD_LIBRARY_PATH=$PREFIX
 mkdir -p "$PREFIX/tmp"
 mkdir -p "$PREFIX/public"
 
-DISTRO_TYPE="proot"
-if [ -f "$PREFIX/.distro_type" ]; then
-    DISTRO_TYPE="$(cat "$PREFIX/.distro_type" 2>/dev/null || echo "proot")"
-fi
-
-if [ "$DISTRO_TYPE" = "chroot" ]; then
-    echo "$$" > "$PREFIX/pid"
-    chmod +x "$PREFIX/bin/chroot-distro" 2>/dev/null || :
-    chmod +x "$PREFIX/axs" 2>/dev/null || :
-
-    # In chroot mode, run AXS with chroot-distro login ubuntu
-    exec "$PREFIX/axs" -c "su -c 'export CHROOT_DISTRO_PATH=/data/local/chroot-distro; sh $PREFIX/bin/chroot-distro login ubuntu'"
-fi
-
 # Determine rootfs directory (Ubuntu / Alpine fallback)
 ROOTFS_DIR="$PREFIX/distro"
 if [ ! -d "$ROOTFS_DIR" ]; then

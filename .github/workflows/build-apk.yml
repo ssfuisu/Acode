@@ -84,9 +84,9 @@ jobs:
             ## Acode with Ubuntu 24.04 LTS (Noble)
             
             ### Features:
-            - **proot-distro (rootless)**: Ubuntu 24.04 LTS Noble Numbat (glibc) environment without root. Full support for Python, pip, and binary wheels.
-            - **chroot-distro (root)**: sabamdarif open-source chroot-distro integration with automatic isolation, mounting, and login.
-            - **Group Warnings Resolved**: Fixed Android UID/GID mapping in Ubuntu rootfs.
+            - **Ubuntu 24.04 LTS (Noble Numbat)**: Pure glibc environment via PRoot. Rock-solid and stable.
+            - **Python & Binary Wheels**: Full support for Python 3, pip, and precompiled C/C++ packages.
+            - **Android Group Warnings Resolved**: Fixed UID/GID mappings in /etc/group.
             - **Acode CLI**: Open files and directories directly in editor using `acode <path>`.
             
             ### Download:
