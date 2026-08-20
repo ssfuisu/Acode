@@ -41,6 +41,7 @@ import java.io.IOException;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Environment;
 import android.webkit.DownloadListener;
@@ -185,7 +186,7 @@ public class Browser extends LinearLayout {
 
             new Handler(Looper.getMainLooper()).post(() -> {
 
-              new AlertDialog.Builder(getContext())
+              AlertDialog alertDialog = new AlertDialog.Builder(getContext())
                 .setTitle("Download file")
                 .setMessage("Do you want to download \"" + fileName + "\"?")
                 .setPositiveButton("Download", (dialog, which) -> {
@@ -213,7 +214,23 @@ public class Browser extends LinearLayout {
                     }
                 })
                 .setNegativeButton("Cancel", null)
-                .show();
+                .create();
+
+              alertDialog.setOnShowListener(dialogInterface -> {
+                  try {
+                      android.widget.Button positiveBtn = alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
+                      if (positiveBtn != null) {
+                          positiveBtn.setTextColor(0xFF000000);
+                          positiveBtn.setTypeface(null, android.graphics.Typeface.BOLD);
+                      }
+                      android.widget.Button negativeBtn = alertDialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+                      if (negativeBtn != null) {
+                          negativeBtn.setTextColor(0xFF333333);
+                      }
+                  } catch (Exception ignored) {}
+              });
+
+              alertDialog.show();
 
             });
             

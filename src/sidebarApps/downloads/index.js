@@ -1,13 +1,13 @@
 import "./style.scss";
+import fsOperation from "fileSystem";
 import Sidebar from "components/sidebar";
 import toast from "components/toast";
 import confirm from "dialogs/confirm";
 import select from "dialogs/select";
-import fsOperation from "fileSystem";
 import openFile from "lib/openFile";
 import openFolder from "lib/openFolder";
-import helpers from "utils/helpers";
 import mimeTypes from "mime-types";
+import helpers from "utils/helpers";
 import Url from "utils/Url";
 
 /** @type {HTMLElement} */
@@ -224,7 +224,9 @@ function createDownloadItem(file) {
 				<div className="item-name" title={name}>
 					{name}
 				</div>
-				<div className="item-meta">{sizeText || (isApk ? "Android Package" : "File")}</div>
+				<div className="item-meta">
+					{sizeText || (isApk ? "Android Package" : "File")}
+				</div>
 			</div>
 			<div className="item-actions">
 				<button
@@ -286,7 +288,9 @@ async function openWithSystem(file) {
 	try {
 		if (window.system?.fileAction) {
 			window.system.fileAction(file.url, name, "VIEW", mimeType, () => {
-				toast(strings["no app found to handle this file"] || "Cannot open file");
+				toast(
+					strings["no app found to handle this file"] || "Cannot open file",
+				);
 			});
 		} else if (window.system?.openInBrowser) {
 			window.system.openInBrowser(file.url);
