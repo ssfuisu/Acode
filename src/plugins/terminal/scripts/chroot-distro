@@ -312,13 +312,71 @@ if [ "${operating_system}" != "GNU/Linux" ] && [ "${operating_system}" != "Linux
 fi
 
 # ensure that working version of wget or curl is used
-if command -v curl >/dev/null 2>&1; then
-    wget() { curl -f -L -k -o "$2" "$1" 2>&1; }
-elif command -v wget >/dev/null 2>&1; then
-    wget() { command wget "$@"; }
-elif [ -n "$busyboxpath" ]; then
-    wget() { busybox wget "$@"; }
-fi
+wget() {
+    if command -v wget >/dev/null 2>&1 && command wget --help >/dev/null 2>&1; then
+        command wget "$@"
+        return $?
+    elif [ -n "$busyboxpath" ] && "$busyboxpath" wget --help >/dev/null 2>&1; then
+        "$busyboxpath" wget "$@"
+        return $?
+    elif command -v curl >/dev/null 2>&1; then
+        local output_file=""
+        local is_spider=false
+        local is_stdout=false
+        local url=""
+        
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --spider)
+                    is_spider=true
+                    shift
+                    ;;
+                -qO-)
+                    is_stdout=true
+                    shift
+                    ;;
+                -O)
+                    output_file="$2"
+                    shift 2
+                    ;;
+                -O-)
+                    is_stdout=true
+                    shift
+                    ;;
+                -q)
+                    shift
+                    ;;
+                -T|-t)
+                    shift 2
+                    ;;
+                -*)
+                    shift
+                    ;;
+                *)
+                    url="$1"
+                    shift
+                    ;;
+            esac
+        done
+
+        if [ "$is_spider" = true ]; then
+            curl -s -f -I -L -k --connect-timeout 10 "$url" >/dev/null 2>&1 || curl -s -f -L -k --connect-timeout 10 -r 0-0 "$url" >/dev/null 2>&1
+            return $?
+        elif [ "$is_stdout" = true ] || [ "$output_file" = "-" ]; then
+            curl -s -f -L -k --connect-timeout 15 "$url"
+            return $?
+        elif [ -n "$output_file" ]; then
+            curl -f -L -k --connect-timeout 15 -o "$output_file" "$url"
+            return $?
+        else
+            curl -f -L -k --connect-timeout 15 -O "$url"
+            return $?
+        fi
+    else
+        print_message error "Neither wget nor curl is available."
+        return 1
+    fi
+}
 
 # ensure that correct version of chroot is used
 chroot() { "$chrootpath" "$@"; }
