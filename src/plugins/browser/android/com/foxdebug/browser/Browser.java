@@ -129,6 +129,16 @@ public class Browser extends LinearLayout {
       }
     );
 
+    ImageButton closeIcon = createIconButton(Ui.Icons.EXIT);
+    closeIcon.setOnClickListener(
+      new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+          exit();
+        }
+      }
+    );
+
     loading = new ProgressBar(context, null, android.R.attr.progressBarStyle);
     loading.setLayoutParams(
       new LinearLayout.LayoutParams(this.imageSize, this.imageSize, 0)
@@ -151,6 +161,7 @@ public class Browser extends LinearLayout {
     if (!onlyConsole) {
       titleLayout.addView(refreshIcon);
       titleLayout.addView(menuIcon);
+      titleLayout.addView(closeIcon);
     }
 
     webView = new WebView(context);
@@ -158,6 +169,11 @@ public class Browser extends LinearLayout {
     webView.setFocusableInTouchMode(true);
     webView.setBackgroundColor(0xFFFFFFFF);
 
+    try {
+      android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+      cookieManager.setAcceptCookie(true);
+      cookieManager.setAcceptThirdPartyCookies(webView, true);
+    } catch (Exception ignored) {}
 
     webView.setDownloadListener(new DownloadListener() {
         @Override
@@ -172,30 +188,37 @@ public class Browser extends LinearLayout {
               new AlertDialog.Builder(getContext())
                 .setTitle("Download file")
                 .setMessage("Do you want to download \"" + fileName + "\"?")
-                .setPositiveButton("Yes", (dialog, which) -> {
-                    DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                    request.setMimeType(mimeType);
-                    request.addRequestHeader("User-Agent", userAgent);
-                    request.setDescription("Downloading file...");
-                    request.setTitle(fileName);
-                    request.allowScanningByMediaScanner();
-                    request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                    request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+                .setPositiveButton("Download", (dialog, which) -> {
+                    try {
+                        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                        if (mimeType != null && !mimeType.isEmpty()) {
+                            request.setMimeType(mimeType);
+                        }
+                        if (userAgent != null && !userAgent.isEmpty()) {
+                            request.addRequestHeader("User-Agent", userAgent);
+                        }
+                        request.setDescription("Downloading file...");
+                        request.setTitle(fileName);
+                        request.allowScanningByMediaScanner();
+                        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
 
-                    DownloadManager dm = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
-                    dm.enqueue(request);
-
-                    Toast.makeText(getContext(), "Download started...", Toast.LENGTH_SHORT).show();
+                        DownloadManager dm = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+                        if (dm != null) {
+                            dm.enqueue(request);
+                            Toast.makeText(getContext(), "Download started: " + fileName, Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        Toast.makeText(getContext(), "Download failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
-
 
             });
             
         }
     });
-
 
     fitWebViewTo(0, 0, 1);
 
@@ -205,9 +228,14 @@ public class Browser extends LinearLayout {
     settings = webView.getSettings();
     settings.setJavaScriptEnabled(true);
     settings.setDomStorageEnabled(true);
+    settings.setDatabaseEnabled(true);
     settings.setAllowContentAccess(true);
+    settings.setAllowFileAccess(true);
+    settings.setUseWideViewPort(true);
+    settings.setLoadWithOverviewMode(true);
+    settings.setSupportZoom(true);
+    settings.setBuiltInZoomControls(true);
     settings.setDisplayZoomControls(false);
-    settings.setDomStorageEnabled(true);
 
     webViewContainer = new LinearLayout(context);
     webViewContainer.setGravity(Gravity.CENTER);

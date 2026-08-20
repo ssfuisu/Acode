@@ -300,7 +300,45 @@ const Terminal = {
             await ensureDir(distroDir);
 
             logger("📦  Extracting Ubuntu 24.04 filesystem...");
-            await Executor.execute(`tar --no-same-owner -xf ${filesDir}/ubuntu.tar.gz -C ${distroDir}`);
+            const extractCmd = `sh -c '
+                export LD_LIBRARY_PATH="$PREFIX"
+                mkdir -p "${distroDir}"
+                
+                # Check for proot binary
+                PROOT=""
+                if [ "$FDROID" = "true" ]; then
+                    if [ -f "$PREFIX/libproot.so" ]; then export PROOT_LOADER="$PREFIX/libproot.so"; fi
+                    if [ -f "$PREFIX/libproot32.so" ]; then export PROOT_LOADER32="$PREFIX/libproot32.so"; fi
+                    if [ -f "$PREFIX/libproot-xed.so" ]; then PROOT="$PREFIX/libproot-xed.so"; fi
+                else
+                    if [ -e "$PREFIX/libtalloc.so.2" ] || [ -L "$PREFIX/libtalloc.so.2" ]; then
+                        rm -f "$PREFIX/libtalloc.so.2"
+                    fi
+                    ln -s "$NATIVE_DIR/libtalloc.so" "$PREFIX/libtalloc.so.2" 2>/dev/null || :
+                    if [ -f "$NATIVE_DIR/libproot.so" ]; then export PROOT_LOADER="$NATIVE_DIR/libproot.so"; fi
+                    if [ -f "$NATIVE_DIR/libproot32.so" ]; then export PROOT_LOADER32="$NATIVE_DIR/libproot32.so"; fi
+                    if [ -f "$NATIVE_DIR/libproot-xed.so" ]; then PROOT="$NATIVE_DIR/libproot-xed.so"; fi
+                fi
+
+                # If proot is available, extract under proot --link2symlink to convert hardlinks to symlinks
+                if [ -n "$PROOT" ] && ([ -x "$PROOT" ] || [ -f "$PROOT" ]); then
+                    chmod +x "$PROOT" 2>/dev/null || :
+                    "$PROOT" -0 --link2symlink -b /system -b /vendor -b /data -b "$PREFIX" -b "${distroDir}" tar --no-same-owner --exclude="dev/*" -xf "${filesDir}/ubuntu.tar.gz" -C "${distroDir}" 2>&1 || :
+                fi
+
+                # If rootfs binaries do not exist yet, fallback to tar directly
+                if [ ! -f "${distroDir}/bin/sh" ] && [ ! -f "${distroDir}/usr/bin/sh" ] && [ ! -f "${distroDir}/bin/bash" ] && [ ! -f "${distroDir}/usr/bin/bash" ]; then
+                    tar --no-same-owner --exclude="dev/*" -xf "${filesDir}/ubuntu.tar.gz" -C "${distroDir}" 2>&1 || :
+                fi
+
+                # Verify extraction succeeded
+                if [ ! -f "${distroDir}/bin/sh" ] && [ ! -f "${distroDir}/usr/bin/sh" ] && [ ! -f "${distroDir}/bin/bash" ] && [ ! -f "${distroDir}/usr/bin/bash" ]; then
+                    echo "Rootfs extraction incomplete" >&2
+                    exit 1
+                fi
+                exit 0
+            '`;
+            await Executor.execute(extractCmd);
 
             logger("⚙️  Applying basic configuration...");
             await writeText(`${distroDir}/etc/resolv.conf`, "nameserver 8.8.8.8\nnameserver 8.8.4.4\n");

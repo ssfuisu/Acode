@@ -90,7 +90,9 @@ async function loadApps() {
 	add(...(await import("./searchInFiles")).default);
 	add(...(await import("./extensions")).default);
 	add(...(await import("./notification")).default);
+	add(...(await import("./downloads")).default);
 	setSponsorSidebarAppVisibility(appSettings.value.showSponsorSidebarApp);
+	addGithubSidebarButton();
 }
 
 /**
@@ -110,6 +112,9 @@ function setSponsorSidebarAppVisibility(visible) {
 			/>
 		);
 		$apps.append($sponsorIcon);
+		if ($githubIcon?.isConnected) {
+			$apps.append($githubIcon);
+		}
 		return;
 	}
 
@@ -117,6 +122,29 @@ function setSponsorSidebarAppVisibility(visible) {
 		$sponsorIcon.remove();
 		$sponsorIcon = null;
 	}
+}
+
+let $githubIcon = null;
+
+/**
+ * Adds GitHub button to the bottom of the sidebar app icons
+ */
+function addGithubSidebarButton() {
+	if (!$apps) return;
+	if ($githubIcon?.isConnected) return;
+	$githubIcon = (
+		<span
+			className="icon github"
+			title="GitHub"
+			style={{ cursor: "pointer" }}
+			onclick={() => {
+				import("plugins/browser").then(({ default: browser }) => {
+					browser.open("https://github.com");
+				});
+			}}
+		/>
+	);
+	$apps.append($githubIcon);
 }
 
 /**

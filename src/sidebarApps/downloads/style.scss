@@ -1,0 +1,173 @@
+#sidebar .container.downloads {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+
+  .header {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+    .title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.1em;
+      font-weight: 500;
+      text-transform: capitalize;
+
+      .actions {
+        display: flex;
+        gap: 6px;
+
+        .icon-button {
+          background: none;
+          border: none;
+          color: inherit;
+          cursor: pointer;
+          opacity: 0.7;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 30px;
+          height: 30px;
+          border-radius: 6px;
+          transition: all 0.2s;
+
+          &:hover,
+          &:active {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.1);
+          }
+
+          .icon {
+            font-size: 1.2em;
+          }
+        }
+      }
+    }
+  }
+
+  .downloads-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 8px;
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
+      text-align: center;
+      opacity: 0.7;
+
+      .empty-icon {
+        font-size: 3.5em;
+        margin-bottom: 12px;
+        opacity: 0.5;
+      }
+
+      .empty-text {
+        font-size: 0.95em;
+        margin-bottom: 16px;
+      }
+
+      .empty-btn {
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: inherit;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        &:hover,
+        &:active {
+          background: rgba(255, 255, 255, 0.25);
+        }
+      }
+    }
+
+    .download-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      transition: background 0.2s;
+      cursor: pointer;
+
+      &:hover,
+      &:active {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .item-icon {
+        font-size: 1.6em;
+        margin-right: 10px;
+        min-width: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .item-details {
+        flex: 1;
+        min-width: 0;
+
+        .item-name {
+          font-size: 0.92em;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .item-meta {
+          font-size: 0.78em;
+          opacity: 0.6;
+          margin-top: 2px;
+        }
+      }
+
+      .item-actions {
+        display: flex;
+        gap: 4px;
+        margin-left: 6px;
+
+        .action-btn {
+          background: none;
+          border: none;
+          color: inherit;
+          opacity: 0.6;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+
+          &:hover,
+          &:active {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.15);
+          }
+
+          .icon {
+            font-size: 1.1em;
+          }
+        }
+      }
+    }
+  }
+}
